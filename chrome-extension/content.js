@@ -9,7 +9,10 @@ function unmarkSelectedLink(websiteLinkElement) {
     websiteLinkElement.style.color = "";
 }
 
-function showPopup(websiteLinkElement) {
+let mouseOverTimer;
+let currentHoveredElement = null;
+
+function showPopup(websiteLinkElement, websiteUrl) {
     const overlay = document.createElement('div');
     overlay.classList.add('popup-overlay');
 
@@ -77,6 +80,7 @@ function showPopup(websiteLinkElement) {
     buttonContainer.style.justifyContent = 'center';
     buttonContainer.style.alignItems = 'center';
     buttonContainer.style.width = '100%';
+    buttonContainer.style.height = '100%';
     buttonContainer.style.margin = '0 auto';
 
     button.style.backgroundColor = '#73851cff';
@@ -88,8 +92,9 @@ function showPopup(websiteLinkElement) {
     button.style.cursor = 'pointer';
     button.style.borderRadius = '6px';
     button.style.transition = 'all 0.3s ease';
-    button.style.width = '50%';
-    button.style.maxWidth = '120px';
+    button.style.width = '100%';
+    button.style.height = '100%';
+    button.style.maxWidth = '320px';
     button.style.boxShadow = '0 2px 5px rgba(0, 0, 0, 0.3)';
     button.style.display = 'block';
     button.style.margin = '0 auto';
@@ -105,18 +110,23 @@ function showPopup(websiteLinkElement) {
     });
 
     button.addEventListener('click', function () {
-        window.location.href = "http://127.0.0.1:5000/website-details";
+        chrome.runtime.sendMessage({
+                                    hoveredWebsiteUrl: websiteUrl
+                                });
     });
 
     closeButton.addEventListener('click', function () {
         overlay.style.display = 'none';
         document.body.removeChild(overlay);
+
         document.addEventListener('mouseover', handleMouseOver);
+        currentHoveredElement = null;
 
         if (websiteLinkElement != null) {
             unmarkSelectedLink(websiteLinkElement);
         }
     });
+
 
     overlay.addEventListener('click', function (event) {
         if (event.target === overlay) {
@@ -127,9 +137,6 @@ function showPopup(websiteLinkElement) {
 }
 
 
-let mouseOverTimer;
-let currentHoveredElement = null;
-
 function handleMouseOver(event) {
     // Google Search Results
     if (window.location.hostname === "www.google.com" && window.location.pathname === '/search' && event.target) {
@@ -138,6 +145,8 @@ function handleMouseOver(event) {
         let websiteLinkElement = hoveredTarget.closest('a');
 
         clearTimeout(mouseOverTimer);
+
+        console.log("aici");
 
         if (websiteLinkElement) {
             const websiteUrl = websiteLinkElement.href;
@@ -151,14 +160,12 @@ function handleMouseOver(event) {
                         }
 
                         mouseOverTimer = setTimeout(function () {
-                                chrome.runtime.sendMessage({
-                                    hoveredWebsiteUrl: websiteUrl
-                                });
-
+                                
                         // stop the listening on hover to process the current website
                         document.removeEventListener('mouseover', handleMouseOver);
-                        showPopup(websiteLinkElement);
+                        showPopup(websiteLinkElement, websiteUrl);
                         markSelectedLink(websiteLinkElement);
+                            
                         }, 3000);
                     }
                     
@@ -174,26 +181,23 @@ function handleMouseOver(event) {
         if (event.target && event.target.tagName === 'A') {
             const websiteUrl = event.target.href;
             
-            if (mouseOverTimer) {
-                clearTimeout(mouseOverTimer);
-            }
-
+            clearTimeout(mouseOverTimer);
+        
+            console.log(websiteUrl);
             if (websiteUrl) {
                 try {
-                    // TO FIX IT
+                    const hoveredTarget = event.target;
                     if (hoveredTarget !== currentHoveredElement) {
+                        
                         currentHoveredElement = hoveredTarget;
                         
                         clearTimeout(mouseOverTimer);
 
                         mouseOverTimer = setTimeout(function() {
-                                chrome.runtime.sendMessage({
-                                    hoveredWebsiteUrl: websiteUrl
-                                });
 
                                 // stop the listening on hover to process the current website
                                 document.removeEventListener('mouseover', handleMouseOver);
-                                showPopup(null);
+                                showPopup(null, websiteUrl);
                         }, 3000);
                     }
                 } catch (err) {
@@ -205,3 +209,4 @@ function handleMouseOver(event) {
 };
 
 document.addEventListener('mouseover', handleMouseOver);
+

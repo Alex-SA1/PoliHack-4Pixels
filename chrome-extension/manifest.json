@@ -4,6 +4,7 @@
   "manifest_version": 3,
   "description": "ceva descriere",
   "permissions": [
+    "storage",
     "activeTab",
     "scripting",
     "http://127.0.0.1/process-url"
