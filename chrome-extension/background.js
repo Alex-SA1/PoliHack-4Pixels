@@ -17,7 +17,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         //     console.error("Error during fetch request:", error);
         // });
 
-        const url = 'http://localhost:5000/process-url?hoveredUrl=' + message.hoveredWebsiteUrl;
+        const url = 'http://localhost:5000/processor?hoveredUrl=' + message.hoveredWebsiteUrl;
 
         chrome.tabs.create({ url: url });
     }
