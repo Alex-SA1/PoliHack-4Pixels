@@ -1,0 +1,24 @@
+{
+  "name": "Safe Web Navigation",
+  "version": "1.0",
+  "manifest_version": 3,
+  "description": "ceva descriere",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "http://127.0.0.1/process-url"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ]
+    }
+  ]
+}
