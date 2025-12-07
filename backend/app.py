@@ -18,9 +18,6 @@ app = Flask(__name__)
 app.secret_key = '48e32d79b7d336c4fec79ee00c46f48bac7a726fb8f8ba0f60100388b1ee8866'
 CORS(app)
 
-# domain age in days
-# problem with port in get_ssl
-
 
 def is_ip_address(domain):
     # Functie extinsa pentru detectarea adreselor IP valide.
@@ -230,9 +227,6 @@ def get_redirect_chain(url):
     except requests.exceptions.TooManyRedirects:
         return {"success": False, "error": "Redirect Loop Detected", "chain": chain_data}
 
-    # except requests.exceptions.SSLError:
-    #     return {"success": False, "error": "SSL Certificate Error", "chain": chain_data}
-
     except requests.exceptions.RequestException as e:
         return {"success": False, "error": str(e), "chain": chain_data}
 
@@ -405,30 +399,6 @@ def analyze_http_requests(url):
 
         browser.close()
         return len(requests)
-
-
-# DETERMINE TypeSquatting
- # Lista brandurilor des țintite pentru Typosquatting
-        # self.high_value_targets = [
-        #     'google', 'facebook', 'paypal', 'apple', 'microsoft',
-        #     'netflix', 'amazon', 'bancatransilvania', 'ing', 'revolut', 'brd'
-        # ]
-
-        # B. Typosquatting (ex: g0ogle.com)
-        # domain_clean = self.domain.replace("www.", "").split('.')[0]
-        # for brand in self.high_value_targets:
-        #     ratio = difflib.SequenceMatcher(None, domain_clean, brand).ratio()
-        #     # Dacă seamănă 80%-99% (dar nu e identic), e suspect
-        #     if 0.80 <= ratio < 1.0:
-        #         self._add_finding(40, "Posibil Typosquatting", f"Domeniul '{domain_clean}' seamănă suspect de mult cu brandul '{brand}' ({int(ratio*100)}% match).")
-
-        # # C. IDN Homograph Attack (Caractere chirilice amestecate cu latine)
-        # try:
-        #     # Încercăm să codăm domeniul în IDNA. Dacă diferă lungimea sau apar caractere ciudate la decodare
-        #     if self.domain.encode('idna') != self.domain.encode('ascii'):
-        #         self._add_finding(35, "IDN Homograph Detected", "Domeniul folosește caractere internaționale (Punycode) pentru a imita un alt site.")
-        # except:
-        #     pass
 
 
 def calculate_trust_score(url, domain, ssl_status, domain_age, tld_info, decoded_analysis, redirect_info, http_request):
