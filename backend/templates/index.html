@@ -53,7 +53,7 @@
                 <div class="detail-row">
                     <div class="detail-label">Clean URL</div>
                     <div class="detail-value">
-                        <a href="{{ context_url_data.clean_url }}" style="text-decoration: none;">{{
+                        <a href="{{ context_url_data.clean_url }}" style="text-decoration: none; color: #fff;">{{
                             context_url_data.clean_url }}</a>
                     </div>
                 </div>
@@ -63,7 +63,7 @@
                 <div class="detail-row">
                     <div class="detail-label">Expanded URL</div>
                     <div class="detail-value">
-                        <a href="{{ context_url_data.expanded_url }}" style="text-decoration: none;">{{
+                        <a href="{{ context_url_data.expanded_url }}" style="text-decoration: none; color: #fff;">{{
                             context_url_data.expanded_url }}</a>
                     </div>
                 </div>
@@ -135,9 +135,22 @@
                     <ul class="findings-list">
                         {% for finding in context_content_data.findings %}
                         <li>
-                            <div>Title: {{ finding['title'] }}</div>
-                            <div>Severity: {{ finding['severity'] }}</div>
-                            <div>Description: {{ finding['description'] }}</div>
+                            <div><b>Title</b>: {{ finding['title'] }}</div>
+                            <div><b>Severity</b>: {{ finding['severity'] }}</div>
+                            <div><b>Description</b>: {{ finding['description'] }}</div>
+
+                            {% if 'reports' in finding %}
+                            <br>
+                            <div>
+                                <h3><b>Problems</b></h3>
+                                <br>
+                            </div>
+                            {% for report in finding['reports']['findings'] %}
+                            <div><b>Type</b>: {{ report['title'] }} </div>
+                            <div><b>Description</b>: {{ report['description'] }} </div>
+                            <br>
+                            {% endfor %}
+                            {% endif %}
                         </li>
                         {% endfor %}
                     </ul>

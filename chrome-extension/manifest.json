@@ -13,7 +13,7 @@
     "storage",
     "activeTab",
     "scripting",
-    "http://127.0.0.1/process-url"
+    "http://127.0.0.1/processor"
   ],
   "background": {
     "service_worker": "background.js"

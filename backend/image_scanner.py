@@ -21,26 +21,25 @@ class ImageSecurityScanner:
 
     def _add_finding(self, score, title, desc):
         self.report["score"] += score
+
         self.report["findings"].append({
             "title": title,
             "description": desc
         })
+
         if score >= 20:
             self.report["is_malicious"] = True
 
-    
     def _extract_text(self, raw):
         return raw.decode("latin-1", errors="ignore")
-
 
     def _detect_fake_header(self, raw):
         text = self._extract_text(raw)
 
-        # If content is mostly ASCII → fake image
         ascii_chars = sum(c.isascii() for c in text)
         ratio = ascii_chars / max(1, len(text))
 
-        if ratio > 0.80:  # 80% ASCII → suspicious
+        if ratio > 0.80:  # 80% ASCII -> suspicious
             self._add_finding(
                 40,
                 "Fake Image Detected",
@@ -107,7 +106,6 @@ class ImageSecurityScanner:
                 "Malicious keywords detected inside image bytes."
             )
 
-  
     def _check_entropy(self, raw):
         freq = {}
         for b in raw:

@@ -71,6 +71,7 @@ function showPopup(websiteLinkElement, websiteUrl) {
     closeButton.style.cursor = 'pointer';
     closeButton.style.color = '#fff';
 
+    title.style.color = '#fff';
     title.style.margin = '0 0 30px 0';
     title.style.fontSize = '20px';
     title.style.fontWeight = 'bold';

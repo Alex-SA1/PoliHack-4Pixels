@@ -22,7 +22,7 @@ CORS(app)
 # problem with port in get_ssl
 
 
-def is_ip_address(domain):  # Vosi
+def is_ip_address(domain):
     # Functie extinsa pentru detectarea adreselor IP valide.
 
     if ":" in domain and domain.count(":") == 1:
@@ -35,8 +35,8 @@ def is_ip_address(domain):  # Vosi
                 return False
 
 
-def suspicious_tld(domain):  # Vosi
-    # Verifica daca TLD-ul unui domeniu este de incredere folosind o lista alba (whitelist).
+def suspicious_tld(domain):
+    # Verificam daca TLD-ul unui domeniu.
 
     safe_tlds = {
         "com", "org", "net", "edu", "gov", "mil", "int",
@@ -47,7 +47,6 @@ def suspicious_tld(domain):  # Vosi
 
     parts = domain.lower().split(".")
 
-    # Domeniu invalid
     if len(parts) < 2:
         return {
             "is_suspicious": True,
@@ -154,73 +153,60 @@ def get_ssl_status(domain):
 
         if not cert:
             result["reason"] = "Could not retrieve SSL certificate"
-            print("1")
             return result
 
         # extract additional fields
         result["issuer"] = dict(x[0] for x in cert.get("issuer", []))
         result["subject"] = dict(x[0] for x in cert.get("subject", []))
 
-        # hostname check
         if not is_ip:
             try:
                 match_hostname(cert, domain)
             except ssl.CertificateError:
                 result["reason"] = "Certificate does not match domain"
-                print("2")
                 return result
 
-        # self-signed checking
+        # self-sign
         issuer_cn = result["issuer"].get("commonName", "")
         subject_cn = result["subject"].get("commonName", "")
-
         if issuer_cn == subject_cn:
             result["reason"] = "Self-signed certificate"
-            print("3")
             result["status"] = "weak"
             return result
 
-        # all checks are passed
         result["status"] = "valid"
         return result
 
     except ssl.SSLError as e:
         result["reason"] = f"SSL error: {str(e)}"
-        print("4")
         return result
 
     except socket.timeout:
         result["reason"] = "Connection timeout"
-        print("5")
         return result
 
     except Exception as e:
         result["reason"] = f"Connection error: {str(e)}"
-        print("6", e)
         return result
 
 
-def get_redirect_chain(url):  # Florin
+def get_redirect_chain(url):
     session = requests.Session()
+    chain_data = []
 
-    # mimare Browser real pentru a evita firewall blocking
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
 
-    chain_data = []
-
     try:
-        # request on session pt a incepe redirect chain-ul
         response = session.get(
             url,
             allow_redirects=True,
             timeout=10,
             headers=headers,
-            stream=True  # init conexiune
+            stream=True
         )
 
-        # iterare istoric redirects
         for hop in response.history:
             chain_data.append({
                 "url": hop.url,
@@ -228,7 +214,6 @@ def get_redirect_chain(url):  # Florin
                 "type": "redirect"
             })
 
-        # adaugare link final
         chain_data.append({
             "url": response.url,
             "status_code": response.status_code,
@@ -245,10 +230,9 @@ def get_redirect_chain(url):  # Florin
     except requests.exceptions.TooManyRedirects:
         return {"success": False, "error": "Redirect Loop Detected", "chain": chain_data}
 
-    except requests.exceptions.SSLError:
-        return {"success": False, "error": "SSL Certificate Error", "chain": chain_data}
+    # except requests.exceptions.SSLError:
+    #     return {"success": False, "error": "SSL Certificate Error", "chain": chain_data}
 
-    # Orice alta eroare de retea
     except requests.exceptions.RequestException as e:
         return {"success": False, "error": str(e), "chain": chain_data}
 
@@ -261,31 +245,26 @@ def expand_short_url(url):
     try:
         session = requests.Session()
 
-        # setare user-agent, altfel bit.ly/tinyurl poate bloca cererea
         session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
 
-        # allow_redirects=True face toată magia: urmărește automat lanțul până la capăt
-        # timeout=10 este important pentru lanțuri lungi
         response = session.head(url, allow_redirects=True, timeout=10)
-
         final_url = response.url
 
-        # Verificăm dacă URL-ul final e diferit de cel inițial
         if final_url != url:
             return {
                 "is_shortened": True,
                 "original_url": url,
                 "expanded_url": final_url,
-                "message": "Link expandat cu succes (Redirect detectat)."
+                "message": "Link successfully expanded (Redirect detected)."
             }
         else:
             return {
                 "is_shortened": False,
                 "original_url": url,
                 "expanded_url": url,
-                "message": "Link-ul nu a făcut redirect (este direct destinația)."
+                "message": "No redirect link."
             }
 
     except requests.exceptions.Timeout:
@@ -306,10 +285,7 @@ def decode_url_fully(url):
 
 
 def extract_base64_from_url(url):
-    """
-    Extrage potentiale string-uri Base64 din URL,
-    de obicei in parametrii (?token=, ?data=, ?redirect=)
-    """
+    # Extrage potentiale string-uri Base64 din URL, de obicei in parametrii (?token=, ?data=, ?redirect=)
 
     base64_candidates = []
 
@@ -324,7 +300,6 @@ def extract_base64_from_url(url):
             continue
         key, value = param.split("=", 1)
 
-        # verificam daca lungimea e suficienta pt Base64
         if len(value) > 12:
             try:
                 decoded = base64.b64decode(value + "===", validate=True)
@@ -341,13 +316,7 @@ def extract_base64_from_url(url):
 
 
 def analyze_decoded_url(url):
-    """
-    Combina tot:
-    - decodeaza URL complet
-    - verifica dublu encoding
-    - verifica secvente periculoase
-    - verifica Base64
-    """
+    # base64 + decode_url
 
     decoded_url, double_encoded = decode_url_fully(url)
     base64_hits = extract_base64_from_url(url)
@@ -355,27 +324,26 @@ def analyze_decoded_url(url):
     suspicious = []
 
     if double_encoded:
-        suspicious.append("URL contine dublu encoding (obfuscare posibila)")
+        suspicious.append("URL contains double encoding")
 
     dangerous_keywords = ["login", "verify", "reset",
                           "update", "secure", "wallet", "bank"]
 
     for word in dangerous_keywords:
-        if word in decoded_url.lower():
-            suspicious.append(f"URL conține cuvant suspect: '{word}'")
+        if word in decoded_url.lower() and word not in url.lower():
+            suspicious.append(f"Encoded URL contains sus word: '{word}'")
 
     if "<script" in decoded_url.lower():
-        suspicious.append("URL contine cod <script> ascuns (posibil XSS)")
+        suspicious.append("URL contains hidden <script> code")
 
     if "javascript:" in decoded_url.lower():
-        suspicious.append(
-            "URL foloseste schema javascript: (extrem de periculos)")
+        suspicious.append("URL uses javascript")
 
     if "@@" in decoded_url:
-        suspicious.append("URL contine @@ (pattern folosit in atacuri)")
+        suspicious.append("URL contains @@ (used in attacks)")
 
     if len(base64_hits) > 0:
-        suspicious.append("URL contine payload Base64 in parametri")
+        suspicious.append("URL contains Base64 payload in parameters")
 
     return {
         "original_url": url,
@@ -405,7 +373,6 @@ def is_tracking_param(key):
 
 
 def url_query_params(url):
-
     parsed = urlparse(url)
     query_params = parse_qs(parsed.query)
 
@@ -504,12 +471,6 @@ def calculate_trust_score(url, domain, ssl_status, domain_age, tld_info, decoded
         if ssl_status["status"] == "invalid":
             penalties += 25
             reasons.append("SSL certificate is invalid or expired")
-        # if ssl_status["expires_in_days"] < 1:
-        #     penalties += 7
-        #     reasons.append("SSL certificate expiring very soon")
-        # elif ssl_status["expires_in_days"] < 5:
-        #     penalties += 3
-        #     reasons.append("SSL certificate expires soon")
 
     # TLD (duplicate check kept for logic consistency)
     if tld_info["is_suspicious"]:
@@ -611,7 +572,6 @@ def analyze_url(url):
 
 
 def analyze_webpage_content(url):
-    # analize webpage content
     if not url or not isinstance(url, str):
         return {
             "status": "error",
@@ -631,6 +591,8 @@ def analyze_webpage_content(url):
 
         if result["findings"]:
             ret["findings"] = result.get("findings")
+
+        print(result["findings"])
 
         if result["technical_details"]:
             ret["technical_details"] = result.get("technical_details")
@@ -665,8 +627,6 @@ def processor():
 
     url_data = analyze_url(url)
     content_data = analyze_webpage_content(url)
-
-    print(content_data)
 
     # Store in session
     session["url_data"] = url_data
