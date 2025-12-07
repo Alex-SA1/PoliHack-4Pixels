@@ -166,7 +166,7 @@ function handleMouseOver(event) {
                         showPopup(websiteLinkElement, websiteUrl);
                         markSelectedLink(websiteLinkElement);
                             
-                        }, 3000);
+                        }, 1500);
                     }
                     
                     
@@ -198,7 +198,7 @@ function handleMouseOver(event) {
                                 // stop the listening on hover to process the current website
                                 document.removeEventListener('mouseover', handleMouseOver);
                                 showPopup(null, websiteUrl);
-                        }, 3000);
+                        }, 1500);
                     }
                 } catch (err) {
                     console.log("Error handling the hovered url!");

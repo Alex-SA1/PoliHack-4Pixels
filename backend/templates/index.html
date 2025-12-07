@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SafeTrace - Website Analyzer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style/style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>SafeTrace</h1>
+        </div>
+
+        <div class="results-section">
+            <h2 style="color: #00d4ff; margin-bottom: 30px; font-size: 1.8em;">URL Analysis</h2>
+            <div class="score-display">
+                <div class="trust-score">
+                    <div class="score-circle">
+                        <svg width="180" height="180" style="transform: rotate(-90deg)">
+                            <circle cx="90" cy="90" r="75" fill="none" stroke="rgba(255,255,255,0.1)"
+                                stroke-width="12" />
+                            <circle cx="90" cy="90" r="75" fill="none" stroke="#00ff88" stroke-width="12"
+                                stroke-dasharray="471"
+                                stroke-dashoffset="{{ 471 - (471 * (context_url_data.trust_score or 0) / 100) if context_url_data else 471 }}"
+                                stroke-linecap="round" style="transition: stroke-dashoffset 1.5s ease-out;" />
+                        </svg>
+                        <div class="score-value">{{ context_url_data.trust_score if context_url_data else 0 }}%</div>
+                    </div>
+                    <div class="score-label">Trust Score</div>
+                </div>
+
+                <div class="speedometer">
+                    <div class="speedometer-gauge">
+                        <div class="gauge-background"></div>
+                        <div class="gauge-needle"
+                            style="--needle-rotation: {{ -90 + (180 * ((100 - (context_url_data.trust_score or 100)) / 100)) if context_url_data else -90 }}deg;">
+                        </div>
+                        <div class="gauge-center"></div>
+                    </div>
+                    <div
+                        class="threat-level {{ (context_url_data.trust_level or 'safe').lower() if context_url_data else 'safe' }}">
+                        {{ context_url_data.trust_level if context_url_data else 'Safe' }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="url-details">
+                {% if context_url_data %}
+                {% if context_url_data.clean_url != hovered_url %}
+                <div class="detail-row">
+                    <div class="detail-label">Clean URL</div>
+                    <div class="detail-value">
+                        <a href="{{ context_url_data.clean_url }}" style="text-decoration: none;">{{
+                            context_url_data.clean_url }}</a>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if context_url_data.expanded_url %}
+                <div class="detail-row">
+                    <div class="detail-label">Expanded URL</div>
+                    <div class="detail-value">
+                        <a href="{{ context_url_data.expanded_url }}" style="text-decoration: none;">{{
+                            context_url_data.expanded_url }}</a>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if context_url_data.tracking_parameters %}
+                <div class="detail-row">
+                    <div class="detail-label">Tracking Parameters Detected</div>
+                    <div class="tracking-params">
+                        {% for param in context_url_data.tracking_parameters %}
+                        <span class="param-tag">{{ param }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if context_url_data.reasons %}
+                <div class="detail-row">
+                    <div class="detail-label">Suspicious Indicators</div>
+                    <ul class="reasons-list">
+                        {% for reason in context_url_data.reasons %}
+                        <li>{{ reason }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+                {% else %}
+                <div class="detail-row">
+                    <div class="detail-value" style="text-align: center; color: #888;">
+                        No URL data available. Please analyze a website first.
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div style="margin-top: 60px; padding-top: 40px; border-top: 2px solid rgba(255,255,255,0.1);">
+                <h2 style="color: #00d4ff; margin-bottom: 30px; font-size: 1.8em;">Content Analysis</h2>
+
+                {% if context_content_data %}
+                <div class="content-overview">
+                    <div class="overview-card">
+                        <div class="overview-icon">⚖️</div>
+                        <div class="overview-label">Verdict</div>
+                        <div class="overview-value status-{{ (context_content_data.status or 'unknown').lower() }}">
+                            {{ context_content_data.verdict }}
+                        </div>
+                    </div>
+                    <div class="overview-card">
+                        <div class="overview-icon">🛡️</div>
+                        <div class="overview-label">Safety Score</div>
+                        <div class="overview-value">{{ context_content_data.safe_score or 0 }}%</div>
+                    </div>
+                    <div class="overview-card">
+                        <div class="overview-icon">📸</div>
+                        <div class="overview-label">Images Scanned</div>
+                        <div class="overview-value">{{ context_content_data.images_scanned or 0 }}</div>
+                    </div>
+                    <div class="overview-card">
+                        <div class="overview-icon">⚠️</div>
+                        <div class="overview-label">Suspicious Images</div>
+                        <div class="overview-value suspicious-count">{{ context_content_data.suspicious_images or 0 }}
+                        </div>
+                    </div>
+                </div>
+
+                {% if context_content_data.findings %}
+                <div class="detail-row" style="margin-top: 20px;">
+                    <div class="detail-label">Findings</div>
+                    <ul class="findings-list">
+                        {% for finding in context_content_data.findings %}
+                        <li>
+                            <div>Title: {{ finding['title'] }}</div>
+                            <div>Severity: {{ finding['severity'] }}</div>
+                            <div>Description: {{ finding['description'] }}</div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                {% if context_content_data.technical_details %}
+                <div class="detail-row" style="margin-top: 20px;">
+                    <div class="detail-label">Technical Details</div>
+                    <div class="technical-details">
+                        {% if context_content_data.technical_details is mapping %}
+                        {% for key, value in context_content_data.technical_details.items() %}
+                        <div class="tech-detail-item">
+                            <span class="tech-key">{{ key }}:</span>
+                            <span class="tech-value">{{ value }}</span>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <div class="detail-value">{{ context_content_data.technical_details }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if context_content_data.image_links %}
+                <div class="detail-row" style="margin-top: 20px;">
+                    <div class="detail-label">Detected Images ({{ context_content_data.image_links|length }})</div>
+                    <div class="image-links-grid">
+                        {% for image_url in context_content_data.image_links %}
+                        <div class="image-link-item">
+                            <div class="image-preview">
+                                <img src="{{ image_url }}" alt="Website image"
+                                    onerror="this.parentElement.innerHTML='<div class=\'image-error\'>❌</div>'">
+                            </div>
+                            <div class="image-url">{{ image_url }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% else %}
+                <div class="detail-row">
+                    <div class="detail-value" style="text-align: center; color: #888;">
+                        No content analysis data available.
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

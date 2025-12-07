@@ -13,15 +13,18 @@ import ipaddress
 from flask_cors import CORS
 from playwright.sync_api import sync_playwright
 
+
 app = Flask(__name__)
 app.secret_key = '48e32d79b7d336c4fec79ee00c46f48bac7a726fb8f8ba0f60100388b1ee8866'
 CORS(app)
+
+# domain age in days
+# problem with port in get_ssl
 
 
 def is_ip_address(domain):  # Vosi
     # Functie extinsa pentru detectarea adreselor IP valide.
 
-    # Eliminam portul
     if ":" in domain and domain.count(":") == 1:
         possible_ip, possible_port = domain.split(":")
         if possible_port.isdigit():
@@ -29,7 +32,6 @@ def is_ip_address(domain):  # Vosi
                 ipaddress.ip_address(possible_ip)
                 return True
             except:
-                # arunca exceptie dac a nu e valid
                 return False
 
 
@@ -111,21 +113,22 @@ def domain_age_days(domain):
 
 
 def get_ssl_status(domain):
-    """
-    Extended SSL validation:
-    - Detects invalid certificates
-    - Detects expired certificates
-    - Detects self-signed certificates
-    - Detects hostname mismatch
-    - Works with IP addresses (skips hostname check)
-    - Returns detailed structured result
-    """
+    # validare certificat SSL
+
+    try:
+        from ssl import CertificateError
+        try:
+            from ssl import match_hostname
+        except ImportError:
+            from backports.ssl_match_hostname import match_hostname
+    except ImportError:
+        raise ImportError("You need to install backports.ssl_match_hostname")
 
     result = {
         "status": "invalid",
         "issuer": None,
         "subject": None,
-        "expires_in_days": None,
+        "expires_in_days": 0,
         "reason": None
     }
 
@@ -142,38 +145,29 @@ def get_ssl_status(domain):
             pass
 
         with ctx.wrap_socket(socket.socket(socket.AF_INET), server_hostname=None if is_ip else domain) as s:
+
+            # problem with port
+            socket.getaddrinfo(domain, 80, proto=socket.AF_INET)
             s.settimeout(4)
             s.connect((domain, 443))
             cert = s.getpeercert()
 
         if not cert:
             result["reason"] = "Could not retrieve SSL certificate"
+            print("1")
             return result
 
         # extract additional fields
         result["issuer"] = dict(x[0] for x in cert.get("issuer", []))
         result["subject"] = dict(x[0] for x in cert.get("subject", []))
 
-        # expiration check
-        from datetime import datetime
-        expires = datetime.strptime(cert["notAfter"], "%b %d %H:%M:%S %Y %Z")
-        days_left = (expires - datetime.utcnow()).days
-        result["expires_in_days"] = days_left
-
-        if days_left < 0:
-            result["reason"] = "Certificate expired"
-            return result
-        if days_left < 10:
-            result["reason"] = "Certificate expiring soon"
-            result["status"] = "weak"
-            return result
-
         # hostname check
         if not is_ip:
             try:
-                ssl.match_hostname(cert, domain)
+                match_hostname(cert, domain)
             except ssl.CertificateError:
                 result["reason"] = "Certificate does not match domain"
+                print("2")
                 return result
 
         # self-signed checking
@@ -182,6 +176,7 @@ def get_ssl_status(domain):
 
         if issuer_cn == subject_cn:
             result["reason"] = "Self-signed certificate"
+            print("3")
             result["status"] = "weak"
             return result
 
@@ -191,14 +186,17 @@ def get_ssl_status(domain):
 
     except ssl.SSLError as e:
         result["reason"] = f"SSL error: {str(e)}"
+        print("4")
         return result
 
     except socket.timeout:
         result["reason"] = "Connection timeout"
+        print("5")
         return result
 
     except Exception as e:
         result["reason"] = f"Connection error: {str(e)}"
+        print("6", e)
         return result
 
 
@@ -442,150 +440,123 @@ def analyze_http_requests(url):
         return len(requests)
 
 
-def is_critical(decoded_analysis, domain, ssl_status, domain_age, redirect_info):
-    """
-    Detecteaza indicatori critici de phishing/malware.
-    Daca este True → site periculos indiferent de scor.
-    """
+# DETERMINE TypeSquatting
+ # Lista brandurilor des țintite pentru Typosquatting
+        # self.high_value_targets = [
+        #     'google', 'facebook', 'paypal', 'apple', 'microsoft',
+        #     'netflix', 'amazon', 'bancatransilvania', 'ing', 'revolut', 'brd'
+        # ]
 
-    critical_keywords = ["bank", "transfer", "wallet",
-                         "payment", "invoice", "secure-login"]
+        # B. Typosquatting (ex: g0ogle.com)
+        # domain_clean = self.domain.replace("www.", "").split('.')[0]
+        # for brand in self.high_value_targets:
+        #     ratio = difflib.SequenceMatcher(None, domain_clean, brand).ratio()
+        #     # Dacă seamănă 80%-99% (dar nu e identic), e suspect
+        #     if 0.80 <= ratio < 1.0:
+        #         self._add_finding(40, "Posibil Typosquatting", f"Domeniul '{domain_clean}' seamănă suspect de mult cu brandul '{brand}' ({int(ratio*100)}% match).")
 
-    decoded_url = decoded_analysis["decoded_url"].lower()
-
-    # 1. Cuvinte critice in URL
-    for word in critical_keywords:
-        if word in decoded_url:
-            return True
-
-    # 2. JavaScript sau <script> in URL
-    if "javascript:" in decoded_url:
-        return True
-    if "<script" in decoded_url:
-        return True
-
-    # 3. Double encoding + cuvinte critice
-    if decoded_analysis["double_encoded"]:
-        for word in critical_keywords:
-            if word in decoded_url:
-                return True
-
-    # 4. Base64 contine cuvinte critice
-    for payload in decoded_analysis["base64_payloads"]:
-        decoded_text = payload["decoded"].lower()
-        for word in critical_keywords:
-            if word in decoded_text:
-                return True
-
-    # 5. Domeniu extrem de nou
-    if domain_age is not None and domain_age < 5:
-        return True
-
-    # 6. IP address + cuvant critic
-    if is_ip_address(domain):
-        for word in critical_keywords:
-            if word in decoded_url:
-                return True
-
-    # 7. Redirect final catre URL periculos
-    if redirect_info["success"]:
-        final_url = redirect_info["chain"][-1]["url"].lower()
-        for word in critical_keywords:
-            if word in final_url:
-                return True
-
-    return False
+        # # C. IDN Homograph Attack (Caractere chirilice amestecate cu latine)
+        # try:
+        #     # Încercăm să codăm domeniul în IDNA. Dacă diferă lungimea sau apar caractere ciudate la decodare
+        #     if self.domain.encode('idna') != self.domain.encode('ascii'):
+        #         self._add_finding(35, "IDN Homograph Detected", "Domeniul folosește caractere internaționale (Punycode) pentru a imita un alt site.")
+        # except:
+        #     pass
 
 
-def calculate_trust_score(url, domain, ssl_status, domain_age, tld_info, decoded_analysis, redirect_info):
-
-    if is_critical(decoded_analysis, domain, ssl_status, domain_age, redirect_info):
-        return 0, "Dangerous", ["Critical Threat Detected"]
-
-    score = 100
+def calculate_trust_score(url, domain, ssl_status, domain_age, tld_info, decoded_analysis, redirect_info, http_request):
     reasons = []
     penalties = 0
 
-    # ip adress
+    # IP address
     if len(url) > 200:
         penalties += 3
-        reasons.append("URL prea lung (posibila ofuscare)")
+        reasons.append("URL length is unusually long (possible obfuscation)")
 
     if is_ip_address(domain):
         penalties += 5
-        reasons.append("URL foloseste IP direct")
+        reasons.append("URL is using a raw IP address instead of a domain")
 
     # TLD
     if tld_info["is_suspicious"]:
         penalties += 15
-        reasons.append("TLD contine secventa de caractere suspecte")
+        reasons.append("TLD contains suspicious strings")
 
     # Domain age in days
     if domain_age is None:
         penalties += 5
-        reasons.append("Domeniul nu are o data de creare")
+        reasons.append("Domain creation date could not be determined")
     elif domain_age < 5:
         penalties += 25
-        reasons.append("Domeniul este nou")
+        reasons.append("Domain is newly registered")
     elif domain_age < 30:
         penalties += 15
-        reasons.append("Domeniul este relativ nou")
+        reasons.append("Domain is relatively new")
     elif domain_age < 80:
         penalties += 10
-        reasons.append("Domeniul nu este foarte vechi")
+        reasons.append("Domain is not very old")
 
     # SSL
-    if ssl_status == "invalid":
-        penalties += 25
-        reasons.append("Certificat SSL invalid sau expirat")
-    # if ssl_status["expires_in_days"] < 1:
-    #     penalties += 7
-    #     reasons.append("Site neglijat")
-    # elif ssl_status["expires_in_days"] < 5:
-    #     penalties += 3
-    #     reasons.append("Site neglijat")
+    if ssl_status["reason"]:
+        penalties += 15
+        reasons.append("SSL error detected")
+    else:
+        if ssl_status["status"] == "invalid":
+            penalties += 25
+            reasons.append("SSL certificate is invalid or expired")
+        # if ssl_status["expires_in_days"] < 1:
+        #     penalties += 7
+        #     reasons.append("SSL certificate expiring very soon")
+        # elif ssl_status["expires_in_days"] < 5:
+        #     penalties += 3
+        #     reasons.append("SSL certificate expires soon")
 
-    # TLD
+    # TLD (duplicate check kept for logic consistency)
     if tld_info["is_suspicious"]:
         penalties += 15
-        reasons.append("TLD contine secventa de caractere suspecte")
+        reasons.append("TLD contains suspicious strings")
 
     # Redirect chain
     if redirect_info["success"]:
         hop_count = len(redirect_info["chain"])
         if hop_count > 6:
             penalties += 15
-            reasons.append("URL-ul contine peste 6 redirecturi")
+            reasons.append("URL has more than 6 redirect hops")
         elif hop_count > 4:
             penalties += 10
-            reasons.append("URL-ul contine peste 4 redirecturi")
+            reasons.append("URL has more than 4 redirect hops")
         elif hop_count > 2:
             penalties += 5
-            reasons.append("URL-ul contine peste 2 redirecturi")
+            reasons.append("URL has more than 2 redirect hops")
 
-# -------------------------
-
-    # expand short
-
-    # 4. Double encoding
+    # Decoded URL analysis
     if decoded_analysis["double_encoded"]:
-        penalties += 20
-        reasons.append("URL este dublu encodat")
+        penalties += 10
+        reasons.append("URL appears to be double-encoded")
 
     penalties_for_keywords = min(30, len(decoded_analysis["suspicious"]) * 10)
     if penalties_for_keywords > 0:
         penalties += penalties_for_keywords
-        reasons.append("URL-ul contine cuvinte suspecte")
+        reasons.append("URL contains suspicious keywords")
 
-    # 6. Base64 payload
     if len(decoded_analysis["base64_payloads"]) > 0:
         penalties += 20
-        reasons.append("URL-ul contine secvente in Base64")
+        reasons.append("URL contains Base64 encoded segments")
+
+    # HTTP request volume
+    if http_request > 120:
+        penalties += 35
+        reasons.append(
+            "URL triggers an unusually high number of HTTP requests")
+    elif http_request > 60:
+        penalties += 15
+        reasons.append("URL triggers a large number of HTTP requests")
 
     score = 100 - penalties
     if score < 0:
         score = 0
 
+    # Score to label
     if score >= 90:
         trust_level = "Excellent"
     elif score >= 70:
@@ -602,13 +573,9 @@ def calculate_trust_score(url, domain, ssl_status, domain_age, tld_info, decoded
 
 def analyze_url(url):
 
-    # Analizeaza complet un URL si genereaza un Trust Score.
-
     parsed = urlparse(url)
     domain = parsed.netloc
-    decoded = unquote(url)
 
-    # Calcul Trust Score
     trust_score, trust_level, reasons = calculate_trust_score(
         url=url,
         domain=domain,
@@ -616,112 +583,39 @@ def analyze_url(url):
         domain_age=domain_age_days(domain),
         tld_info=suspicious_tld(domain),
         decoded_analysis=analyze_decoded_url(url),
-        redirect_info=get_redirect_chain(url)
+        redirect_info=get_redirect_chain(url),
+        http_request=analyze_http_requests(url)
     )
 
     clean_url, tracking_params = url_query_params(url)
-
-    return {
-        "trust_score": trust_score,
-        "trust_level": trust_level,
-        "reasons": reasons,
-        "clean_url": clean_url,
-        "tracking_parameters": tracking_params,
-    } | analize_link_page(url)
-
-
-def analize_link_page(url):  # Florin page scanner
-
-    if not url:
-        return jsonify({"error": "No URL provided"}), 400
-
-    scanner = WebPageScanner(url)
-    return scanner.run()
-
-
-def return_url_analysis(url):
-    """
-    Full URL security analysis.
-    Expands short URLs, performs domain checks, SSL checks,
-    URL obfuscation detection, redirect chain analysis,
-    and webpage content scanning.
-    """
-
-    if not url:
-        return {"error": "No URL provided"}
-
-    # 1. Expand shortened URLs (bit.ly, tinyurl…)
     expanded = expand_short_url(url)
-    final_url = expanded.get("expanded_url", url)
 
-    # 2. URL decoding & Base64 analysis
-    decoded_analysis = analyze_decoded_url(final_url)
-
-    # 3. Parse domain
-    parsed = urlparse(final_url)
-    domain = parsed.netloc
-
-    # 4. Domain age
-    age_days = domain_age_days(domain)
-
-    # 5. TLD analysis
-    tld_info = suspicious_tld(domain)
-
-    # 6. SSL status
-    ssl_info = get_ssl_status(domain)
-
-    # 7. Redirect chain
-    redirect_info = get_redirect_chain(final_url)
-
-    # 8. Trust Score (based on URL-level factors)
-    trust_score, trust_level, badges = calculate_trust_score(
-        url=final_url,
-        domain=domain,
-        ssl_status=ssl_info["status"],
-        domain_age=age_days,
-        tld_info=tld_info,
-        decoded_analysis=decoded_analysis,
-        redirect_info=redirect_info
-    )
-
-    # 9. HTML + JS scanner
-    webpage_result = WebPageScanner(final_url).run()
-
-    # 10. Merge results into ONE unified object
-    return {
-        "original_url": url,
-        "expanded_url": final_url,
-        "decoded_analysis": decoded_analysis,
-        "redirect_chain": redirect_info,
-        "domain_age_days": age_days,
-        "ssl": ssl_info,
-        "tld_info": tld_info,
-
+    result = {
         "trust_score": trust_score,
         "trust_level": trust_level,
-        "badges": badges,
-
-        "webpage_scan": webpage_result,
-        "shortener_info": expanded,
-
-        "is_valid": trust_level != "Dangerous"
     }
 
+    if clean_url:
+        result["clean_url"] = clean_url
 
-def return_webpage_analysis(url):
-    """
-    Master function that performs a FULL webpage scan:
-    - HTML analysis (forms, JS obfuscation, social engineering)
-    - Network/SSL/domain reputation
-    - Image security analysis (steganography, polyglot images, malicious SVG)
+    if tracking_params:
+        result["tracking_parameters"] = tracking_params
 
-    Returns a JSON-serializable dictionary.
-    """
+    if reasons:
+        result["reasons"] = reasons
+
+    if expanded.get("is_shortened"):
+        result["expanded_url"] = expanded["expanded_url"]
+
+    return result
+
+
+def analyze_webpage_content(url):
+    # analize webpage content
     if not url or not isinstance(url, str):
         return {
             "status": "error",
-            "error": "Invalid or missing URL",
-            "risk_score": 100,
+            "safe_score": 100,
             "verdict": "UNAVAILABLE"
         }
 
@@ -729,62 +623,68 @@ def return_webpage_analysis(url):
         scanner = WebPageScanner(url)
         result = scanner.run()
 
-        return {
-            "status": "success",
-            "url": url,
-            "verdict": result.get("verdict"),
-            "risk_score": result.get("risk_score"),
-            "scan_time": result.get("scan_time"),
-            "findings": result.get("findings"),
-            "technical_details": result.get("technical_details")
+        ret = {
+            "status": result.get("status"),
+            "safe_score": result.get("score"),
+            "verdict": result.get("verdict")
         }
+
+        if result["findings"]:
+            ret["findings"] = result.get("findings")
+
+        if result["technical_details"]:
+            ret["technical_details"] = result.get("technical_details")
+
+        if result["images_scanned"] != 0:
+            ret["images_scanned"] = result.get("images_scanned")
+
+        if result["suspicious_images"] != 0:
+            ret["suspicious_images"] = result.get("suspicious_images")
+
+        if result["image_links"]:
+            ret["image_links"] = result.get("image_links")
+
+        return ret
 
     except Exception as e:
         return {
-            "status": "error",
-            "url": url,
-            "error": str(e),
-            "risk_score": 100,
+            "status": "error2",
+            "safe_score": 100,
             "verdict": "UNAVAILABLE"
         }
 
 
-@app.route("/processor", methods=['GET'])
+@app.route("/processor", methods=["GET"])
 def processor():
     url = request.args.get("hoveredUrl")
+
+    session["hovered_url"] = url
 
     if not url:
         return jsonify({"error": "Missing 'hoveredUrl' parameter"}), 400
 
-    url_analysis = return_url_analysis(url)               # URL-level analysis
-    # Full webpage scan (HTML + JS + images)
-    webpage_analysis = return_webpage_analysis(url)
+    url_data = analyze_url(url)
+    content_data = analyze_webpage_content(url)
 
-    session["url_analysis"] = url_analysis
-    session["webpage_analysis"] = webpage_analysis
+    print(content_data)
 
-    # Debug print in terminal
-    print("\n=== URL ANALYSIS ===")
-    print(url_analysis)
-    print("\n=== WEBPAGE ANALYSIS ===")
-    print(webpage_analysis)
+    # Store in session
+    session["url_data"] = url_data
+    session["content_data"] = content_data
 
-    # Redirect to the UI page
+    # Redirect to details page
     return redirect(url_for("website_details"))
 
 
 @app.route("/website-details", methods=['GET'])
 def website_details():
-    my_data = session.get('my_data', 'No data available')
-    sergiu = session.get('name')
-    print("Woooooooooooooow" + my_data)
+    context_url_data = session.get("url_data")
+    context_content_data = session.get("content_data")
 
-    context_data = {
-        'name': 'Sergiulica',
-        'age': -18
-    }
-
-    return render_template('index.html', context=context_data)
+    return render_template('index.html',
+                           hovered_url=session.get("hovered_url"),
+                           context_url_data=context_url_data,
+                           context_content_data=context_content_data)
 
 
 if __name__ == "__main__":

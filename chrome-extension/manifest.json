@@ -1,8 +1,14 @@
 {
-  "name": "Safe Web Navigation",
+  "name": "SafeTrace",
   "version": "1.0",
   "manifest_version": 3,
-  "description": "ceva descriere",
+  "description": "Chrome Extension that offers website hostname and content anlyzing",
+  "icons": {
+    "16": "logo16.jpeg",
+    "32": "logo32.jpeg",
+    "48": "logo48.jpeg",
+    "128": "logo128.jpeg"
+  },
   "permissions": [
     "storage",
     "activeTab",
